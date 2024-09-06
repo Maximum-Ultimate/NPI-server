@@ -43,15 +43,15 @@ The server listens for WebSocket connections and supports several actions that c
 
 
 - **Example JSON payload:**
-   ```bash
+```bash
    {
   "action": "ADD_COUNTER",
   "counter_name": "Counter 1",
   "queues_number": 0,
   "status": "inactive",
   "remarks": "" }
-}
 
+```
 ## Supported Actions
 - **Counter Actions**
 ADD_COUNTER
@@ -66,12 +66,12 @@ Example payload:
   "status": "inactive",
   "remarks": ""
 }
-
+```
 EDIT_COUNTER
 
 Edits an existing counter based on its ID.
 Example payload:
-``
+```bash
 {
   "action": "EDIT_COUNTER",
   "id": 1,
@@ -79,26 +79,29 @@ Example payload:
   "queues_number": 10,
   "status": "active",
   "remarks": "Updated"
-}``
+}
+```
 DELETE_COUNTER
 
 Deletes an existing counter by its ID.
 Example payload:
-``
+```bash
 {
   "action": "DELETE_COUNTER",
   "id": 1
-}``
+}
+```
 CHANGE_STATUS
 
 Changes the status of an existing counter.
 Example payload:
-``
+```bash
 {
   "action": "CHANGE_STATUS",
   "id": 1,
   "status": "active"
-}``
+}
+```
 User Actions
 GET_ALL_USERS
 
@@ -108,39 +111,43 @@ GET_USER_BY_UNIQUEID_POST
 
 Fetches a user by their uniqueId using a POST request.
 Example payload:
-``
+```bash
 {
   "action": "GET_USER_BY_UNIQUEID_POST",
   "uniqueId": "12345"
-}``
+}
+```
 GET_USER_BY_UNIQUEID_GET
 
 Fetches a user by their uniqueId using a GET request.
 Example payload:
-``
+```bash
 {
   "action": "GET_USER_BY_UNIQUEID_GET",
   "uniqueId": "12345"
-}``
+}
+```
 GET_USER_QR
 
 Fetches the QR code associated with a user.
 Example payload:
-``
+```bash
 {
   "action": "GET_USER_QR",
   "uniqueId": "12345"
-}``
+}
+```
 Admin Actions
 ADMIN_SCAN
 Admin scans a user's QR code and assigns them a queue number based on their device type.
 
 Example payload:
-``
+```bash
 {
   "action": "ADMIN_SCAN",
   "code": "some-code"
-}``
+}
+```
 The queue number prefix depends on the user’s device type. Example:
 
 iPhone 15 Pro Max → Prefix: A-
@@ -149,22 +156,24 @@ iPhone 15 Plus → Prefix: A-
 iPhone 15 → Prefix: B-
 Error Handling
 Each action returns a success or error message. If an operation fails (e.g., database errors), the server will return an appropriate error response, such as:
-``
+```bash
 {
   "status": "error",
   "message": "Error adding counter"
-}``
+}
+```
 Error Codes
-``
+```bash
 200 - Success
 400 - Bad Request (e.g., invalid action or user not found)
 404 - Not Found
-500 - Server Error``
+500 - Server Error
+```
 Example Client
 You can connect to the WebSocket server using any WebSocket client library and send the appropriate JSON payloads to interact with the system.
 
 Here’s an example using Node.js:
-``
+```bash
 const WebSocket = require('ws');
 const ws = new WebSocket('ws://localhost:PORT_NUMBER');
 ws.on('open', function open() {
@@ -179,6 +188,6 @@ ws.on('open', function open() {
 ws.on('message', function incoming(data) {
   console.log(data);
 });
-``
+```
 ## Conclusion
 This WebSocket server provides real-time queue management for counters and users in a system. The implementation leverages MySQL for persistent data storage and Knex.js for database interactions, making it easy to extend and integrate with other systems.
