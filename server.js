@@ -18,9 +18,7 @@ app.use(cors());
 
 
 const server = http.createServer(app);
-const wss = new WebSocket.Server({
-  server
-});
+const wss = new WebSocket.Server({ server });
 
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
@@ -38,23 +36,34 @@ wss.on('connection', (ws) => {
 
   ws.on('message', async (message) => {
     const data = JSON.parse(message);
-
     switch (data.action) {
       case 'ADD_COUNTER':
         try {
-          const newCounter = await knex('counters').insert({
-            counter_name: data.counter_name,
-            queues_number: data.queues_number || 0,
-            status: data.status || 'inactive',
-            remarks: data.remarks || '',
-          });
-          ws.send(JSON.stringify({
-            message: 'Counter added successfully',
-            id: newCounter[0]
-          }));
+          const existingCounter = await knex('counters').where({ counter_name: data.counter_name }).first();
+  
+          if (existingCounter) {
+            ws.send(JSON.stringify({
+              status: 'failed',
+              message: 'Counter name already exists'
+            }));
+          } else {
+            const newCounter = await knex('counters').insert({
+              counter_name: data.counter_name,
+              queues_number: data.queues_number || 0,
+              status: data.status || 'inactive',
+              remarks: data.remarks || '',
+            });
+  
+            ws.send(JSON.stringify({
+              status: 'success',
+              message: 'Counter added successfully',
+              id: newCounter[0]
+            }));
+          }
         } catch (error) {
           ws.send(JSON.stringify({
-            error: 'Error adding counter'
+            status: 'error',
+            message: 'Error adding counter'
           }));
         }
         break;
@@ -112,6 +121,121 @@ wss.on('connection', (ws) => {
           }));
         }
         break;
+      
+      case 'GET_ALL_USERS':
+        try {
+          const users = await knex('users').select('*');
+          ws.send(JSON.stringify({ status: 200, data: users }));
+        } catch (error) {
+          console.error('Error fetching users:', error);
+          ws.send(JSON.stringify({ status: 500, error: 'Error fetching users' }));
+        }
+        break;
+
+      case 'GET_USER_BY_UNIQUEID_POST':
+        const { uniqueId: postUniqueId } = data;
+        try {
+          const user = await knex('users').where({ uniqueId: postUniqueId }).first();
+          if (!user) {
+            ws.send(JSON.stringify({ status: 400, error: 'User not found' }));
+          } else {
+            ws.send(JSON.stringify({ status: 200, data: user }));
+          }
+        } catch (error) {
+          console.error('Error fetching user:', error);
+          ws.send(JSON.stringify({ status: 500, error: 'Error fetching user' }));
+        }
+        break;
+
+      case 'GET_USER_BY_UNIQUEID_GET':
+        const { uniqueId: getUniqueId } = data;
+        try {
+          const user = await knex('users').where({ uniqueId: getUniqueId }).first();
+          if (!user) {
+            ws.send(JSON.stringify({ status: 404, error: 'User not found' }));
+          } else {
+            ws.send(JSON.stringify({ status: 200, data: user }));
+          }
+        } catch (error) {
+          console.error('Error fetching user:', error);
+          ws.send(JSON.stringify({ status: 500, error: 'Error fetching user' }));
+        }
+        break;
+
+      case 'GET_USER_QR':
+        const { uniqueId: qrUniqueId } = data;
+        try {
+          const user = await knex('users').where({ uniqueId: qrUniqueId }).first();
+          if (user && user.qr_code) {
+            const qrCodeFilePath = path.join(__dirname, 'qrcodes', `${user.uniqueId}.png`);
+            ws.send(JSON.stringify({ status: 200, qrCodeFilePath }));
+          } else {
+            ws.send(JSON.stringify({ status: 404, error: 'QR code not found' }));
+          }
+        } catch (error) {
+          console.error('Error fetching QR code:', error);
+          ws.send(JSON.stringify({ status: 500, error: 'Error fetching QR code' }));
+        }
+        break;
+
+      case 'ADMIN_SCAN':
+        const { code } = data;
+        try {
+          const user = await knex('users').where({ code }).first();
+          if (!user) {
+            ws.send(JSON.stringify({ status: 404, error: 'User not found' }));
+            return;
+          }
+
+          // Check if the user already has a queue number
+          if (user.queue_number && user.queue_number.trim() !== '') {
+            ws.send(JSON.stringify({ status: 400, error: 'User already has a queue number' }));
+            return;
+          }
+
+          let prefix;
+          switch (user.type) {
+            case 'iPhone 15 Pro Max': prefix = 'A-'; break;
+            case 'iPhone 15 Pro': prefix = 'B-'; break;
+            case 'iPhone 15 Plus': prefix = 'A-'; break;
+            case 'iPhone 15': prefix = 'B-'; break;
+            default:
+              ws.send(JSON.stringify({ status: 400, error: 'Invalid user type' }));
+              return;
+          }
+
+          // Find the latest queue number for the prefix
+          const latestUser = await knex('users')
+            .where('queue_number', 'like', `${prefix}%`)
+            .orderBy('queue_number', 'desc')
+            .first();
+
+          let newNumber = '001';
+          if (latestUser && latestUser.queue_number) {
+            const latestNumber = latestUser.queue_number.replace(prefix, '');
+            const nextNumber = parseInt(latestNumber) + 1;
+            newNumber = String(nextNumber).padStart(3, '0');
+          }
+
+          // Update the user's queue number
+          await knex('users').where({ code: user.code }).update({
+            queue_number: `${prefix}${newNumber}`,
+          });
+
+          ws.send(JSON.stringify({
+            status: 200,
+            data: {
+              uniqueId: user.uniqueId,
+              customer_name: user.customer_name,
+              product: user.product,
+              queue_number: `${prefix}${newNumber}`,
+            },
+          }));
+        } catch (error) {
+          console.error('Error processing scan:', error);
+          ws.send(JSON.stringify({ status: 500, error: 'Error processing scan' }));
+        }
+        break;
 
       default:
         ws.send(JSON.stringify({
@@ -125,6 +249,7 @@ wss.on('connection', (ws) => {
     console.log('WebSocket client disconnected');
   });
 });
+
 //check all user
 app.get('/api/users', async (req, res) => {
   try {
@@ -255,62 +380,62 @@ app.post('/api/admin/scan', async (req, res) => {
     }
   }
 });
-// Confirm user by uniqueId
-app.post('/api/admin/scan', async (req, res) => {
-  const { code } = req.body;
-  console.log(code);
-  try {
-    const user = await knex('users').where({ code }).first();
-    if (user) {
-      let prefix;
-      if (user.type === 'iPhone 15 Pro Max') {
-        prefix = 'A-';
-      } else if (user.type === 'iPhone 15 Pro') {
-        prefix = 'B-';
-      } else if (user.type === 'iPhone 15 Plus') {
-        prefix = 'C-';
-      } else if (user.type === 'iPhone 15') {
-        prefix = 'D-';
-      } else {
-        return res.status(400).send('Invalid user type');
-      }
+// // Confirm user by uniqueId
+// app.post('/api/admin/scan', async (req, res) => {
+//   const { code } = req.body;
+//   console.log(code);
+//   try {
+//     const user = await knex('users').where({ code }).first();
+//     if (user) {
+//       let prefix;
+//       if (user.type === 'iPhone 15 Pro Max') {
+//         prefix = 'A-';
+//       } else if (user.type === 'iPhone 15 Pro') {
+//         prefix = 'B-';
+//       } else if (user.type === 'iPhone 15 Plus') {
+//         prefix = 'C-';
+//       } else if (user.type === 'iPhone 15') {
+//         prefix = 'D-';
+//       } else {
+//         return res.status(400).send('Invalid user type');
+//       }
 
-      // Find the latest queue number for the prefix
-      const latestUser = await knex('users')
-        .where('queue_number', 'like', `${prefix}%`)
-        .orderBy('queue_number', 'desc')
-        .first();
+//       // Find the latest queue number for the prefix
+//       const latestUser = await knex('users')
+//         .where('queue_number', 'like', `${prefix}%`)
+//         .orderBy('queue_number', 'desc')
+//         .first();
 
-      let newNumber = '001';
-      if (latestUser && latestUser.queue_number) {
-        const latestNumber = latestUser.queue_number.replace(prefix, '');
-        const nextNumber = parseInt(latestNumber) + 1;
-        newNumber = String(nextNumber).padStart(3, '0');
-      }
+//       let newNumber = '001';
+//       if (latestUser && latestUser.queue_number) {
+//         const latestNumber = latestUser.queue_number.replace(prefix, '');
+//         const nextNumber = parseInt(latestNumber) + 1;
+//         newNumber = String(nextNumber).padStart(3, '0');
+//       }
 
-      await knex('users')
-        .where({ code: user.code })
-        .update({
-          queue_number: `${prefix}${newNumber}`,
-        });
+//       await knex('users')
+//         .where({ code: user.code })
+//         .update({
+//           queue_number: `${prefix}${newNumber}`,
+//         });
 
-      console.log(`Added user to queue with number: ${prefix}${newNumber}`);
-      res.status(200).json({
-        uniqueId: user.uniqueId,
-        customer_name: user.customer_name,
-        product: user.product,
-        queue_number: `${prefix}${newNumber}`,
-      });
-    } else {
-      res.status(404).send('User not found');
-    }
-  } catch (error) {
-    console.error('Error processing scan:', error);
-    if (!res.headersSent) {
-      res.status(500).send('Error processing scan');
-    }
-  }
-});
+//       console.log(`Added user to queue with number: ${prefix}${newNumber}`);
+//       res.status(200).json({
+//         uniqueId: user.uniqueId,
+//         customer_name: user.customer_name,
+//         product: user.product,
+//         queue_number: `${prefix}${newNumber}`,
+//       });
+//     } else {
+//       res.status(404).send('User not found');
+//     }
+//   } catch (error) {
+//     console.error('Error processing scan:', error);
+//     if (!res.headersSent) {
+//       res.status(500).send('Error processing scan');
+//     }
+//   }
+// });
 // control counter
 app.post('/api/admin/queue-control', async (req, res) => {
   const { prefix, action } = req.body;
@@ -531,5 +656,12 @@ app.post('/confirm', async (req, res) => {
 
 
 
+// Catch-all route to prevent 404 on WebSocket handshake
+app.use((req, res, next) => {
+  res.status(404).send('Not found');
+});
 
-app.listen(3000, () => console.log('Server running on port 3000'));
+// Listen on port 3200 for HTTP and WebSocket connections
+server.listen(3200, () => {
+  console.log('Server running on port 3200');
+});
