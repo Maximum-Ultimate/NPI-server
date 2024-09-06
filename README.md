@@ -43,13 +43,14 @@ The server listens for WebSocket connections and supports several actions that c
 
 
 - **Example JSON payload:**
-`` {
+   ```bash
+   {
   "action": "ADD_COUNTER",
   "counter_name": "Counter 1",
   "queues_number": 0,
   "status": "inactive",
-  "remarks": ""
-}``
+  "remarks": "" }
+}
 
 ## Supported Actions
 - **Counter Actions**
@@ -57,14 +58,14 @@ ADD_COUNTER
 
 Adds a new counter to the system.
 Example payload:
-``
+```bash
 {
   "action": "ADD_COUNTER",
   "counter_name": "Counter 1",
   "queues_number": 0,
   "status": "inactive",
   "remarks": ""
-}``
+}
 
 EDIT_COUNTER
 
